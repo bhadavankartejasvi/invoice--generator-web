@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import AuthLayout from "../../components/auth/AuthLayout";
-import AuthFooter from "../../components/auth/AuthFooter";
 import { register } from "../../api/auth";
 
 const Register = () => {
@@ -98,7 +97,6 @@ const Register = () => {
           Already registered? <Link to="/" className="text-indigo-600 hover:text-indigo-800 font-semibold ml-1">Log in</Link>
         </p>
       </div>
-      <AuthFooter />
     </AuthLayout>
   );
 };

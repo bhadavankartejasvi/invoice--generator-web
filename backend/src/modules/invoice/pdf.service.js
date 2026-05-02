@@ -8,10 +8,13 @@ export const generateInvoicePDF = async (
   client,
   template
 ) => {
-  const filePath = `invoice_${invoice.id}.pdf`;
+  return new Promise(async (resolve, reject) => {
+    try {
+      const filePath = `invoice_${invoice.id}.pdf`;
 
-  const doc = new PDFDocument();
-  doc.pipe(fs.createWriteStream(filePath));
+      const doc = new PDFDocument();
+      const stream = fs.createWriteStream(filePath);
+      doc.pipe(stream);
 
   const config = template?.config || {};
   const branding = config.branding || {};
@@ -51,10 +54,10 @@ export const generateInvoicePDF = async (
   doc.font("Helvetica-Bold").text("BILL TO:");
   doc.font("Helvetica");
 
-  doc.text(client.name);
-  if (client.address) doc.text(client.address);
-  doc.text(`Email: ${client.email}`);
-  if (client.phone) doc.text(`Phone: ${client.phone}`);
+  doc.text(client?.name || "N/A");
+  if (client?.address) doc.text(client.address);
+  doc.text(`Email: ${client?.email || "N/A"}`);
+  if (client?.phone) doc.text(`Phone: ${client.phone}`);
 
   // =============================
   // ITEMS TABLE
@@ -91,8 +94,13 @@ export const generateInvoicePDF = async (
     doc.text(`$${total.toFixed(2)}`, 480, doc.y - 12);
 
     // 🔥 ITEM CUSTOM FIELDS
-    if (item.custom_fields?.length) {
-      item.custom_fields.forEach((f) => {
+    let itemCustomFields = item.custom_fields;
+    if (typeof itemCustomFields === 'string') {
+      try { itemCustomFields = JSON.parse(itemCustomFields); } catch (e) { itemCustomFields = []; }
+    }
+    
+    if (Array.isArray(itemCustomFields) && itemCustomFields.length) {
+      itemCustomFields.forEach((f) => {
         doc.fontSize(fontSize - 2).text(`${f.label}: ${f.value}`, 60);
       });
       doc.fontSize(fontSize);
@@ -124,11 +132,16 @@ export const generateInvoicePDF = async (
   // =============================
   // 🔥 INVOICE CUSTOM FIELDS
   // =============================
-  if (invoice.custom_fields?.length) {
+  let invoiceCustomFields = invoice.custom_fields;
+  if (typeof invoiceCustomFields === 'string') {
+    try { invoiceCustomFields = JSON.parse(invoiceCustomFields); } catch (e) { invoiceCustomFields = []; }
+  }
+
+  if (Array.isArray(invoiceCustomFields) && invoiceCustomFields.length) {
     doc.moveDown();
     doc.font("Helvetica");
 
-    invoice.custom_fields.forEach((f) => {
+    invoiceCustomFields.forEach((f) => {
       doc.text(`${f.label}: ${f.value}`);
     });
   }
@@ -158,5 +171,14 @@ export const generateInvoicePDF = async (
 
   doc.end();
 
-  return filePath;
+      stream.on("finish", () => {
+        resolve(filePath);
+      });
+      stream.on("error", (err) => {
+        reject(err);
+      });
+    } catch (err) {
+      reject(err);
+    }
+  });
 };

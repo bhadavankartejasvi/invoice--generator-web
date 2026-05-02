@@ -2,7 +2,6 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import AuthLayout from "../../components/auth/AuthLayout";
-import AuthFooter from "../../components/auth/AuthFooter";
 import { login } from "../../api/auth";
 
 const Login = () => {
@@ -124,9 +123,6 @@ const Login = () => {
           Don't have an account? <Link to="/register" className="text-indigo-600 hover:text-indigo-800 font-semibold">Sign up</Link>
         </p>
       </div>
-
-      {/* FOOTER */}
-      <AuthFooter />
 
     </AuthLayout>
   );
