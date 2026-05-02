@@ -1,0 +1,12 @@
+# root
+.env
+
+# frontend
+frontend/.env
+frontend/node_modules/
+frontend/build/
+
+# backend
+backend/.env
+backend/node_modules/
+backend/dist/
