@@ -15,6 +15,18 @@ const User = sequelize.define("User", {
     type: DataTypes.STRING,
     allowNull: false
   },
+  company: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  phone: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  profilePicture: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
   reset_token: DataTypes.STRING,
   reset_token_expiry: DataTypes.DATE
 }, {

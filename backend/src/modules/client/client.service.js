@@ -26,7 +26,9 @@ export const getClients = async (query = {}) => {
     where[Op.or] = [
       { name: { [Op.like]: `%${search}%` } },
       { company: { [Op.like]: `%${search}%` } },
-      { email: { [Op.like]: `%${search}%` } }
+      { email: { [Op.like]: `%${search}%` } },
+      { phone: { [Op.like]: `%${search}%` } },
+      { address: { [Op.like]: `%${search}%` } }
     ];
   }
   

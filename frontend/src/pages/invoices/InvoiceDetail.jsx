@@ -83,7 +83,24 @@ const InvoiceDetail = () => {
 
   const items = invoice.InvoiceItems || invoice.items || [];
   const client = invoice.Client || {};
-  const tplConfig = invoice.template_snapshot || {};
+  let tplConfig = invoice.template_snapshot || {};
+  while (typeof tplConfig === 'string') {
+    try { tplConfig = JSON.parse(tplConfig); } catch { break; }
+  }
+
+  if (tplConfig && typeof tplConfig === "object" && tplConfig["0"] === "{") {
+    const str = Object.keys(tplConfig)
+      .filter(k => !isNaN(parseInt(k)))
+      .sort((a, b) => parseInt(a) - parseInt(b))
+      .map(k => tplConfig[k])
+      .join("");
+    try {
+      const parsed = JSON.parse(str);
+      tplConfig = { ...parsed, ...tplConfig };
+    } catch {
+      console.error("Failed to parse reconstructed config");
+    }
+  }
   const themeColor = tplConfig.themeColor || '#1e293b';
   const fontClass = tplConfig.typography === 'serif' ? 'font-serif' : tplConfig.typography === 'mono' ? 'font-mono' : 'font-sans';
   const radiusClass = tplConfig.borderStyle === 'square' ? 'rounded-none' : 'rounded-lg';

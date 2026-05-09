@@ -31,27 +31,32 @@ const TemplateBuilder = () => {
   const [savedForm, setSavedForm] = useState(defaultForm);
   const [error, setError] = useState("");
 
+  const loadTemplates = async () => {
+    try {
+      const response = await getTemplates();
+      setTemplates(response);
+      return response;
+    } catch (err) {
+      console.error(err);
+      return [];
+    }
+  };
+
   useEffect(() => {
-    const loadTemplates = async () => {
-      try {
-        const response = await getTemplates();
-        setTemplates(response);
-        if (response && response.length > 0) {
-          const active = response[0];
-          const config = active.config || {};
-          const loadedForm = {
-            ...defaultForm,
-            ...config,
-            name: active.name || defaultForm.name,
-          };
-          setForm(loadedForm);
-          setSavedForm(loadedForm);
-        }
-      } catch (err) {
-        console.error(err);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadTemplates().then(response => {
+      if (response && response.length > 0) {
+        const active = response[0];
+        const config = active.config || {};
+        const loadedForm = {
+          ...defaultForm,
+          ...config,
+          name: active.name || defaultForm.name,
+        };
+        setForm(loadedForm);
+        setSavedForm(loadedForm);
       }
-    };
-    loadTemplates();
+    });
   }, []);
 
   const handleChange = (event) => {
@@ -109,6 +114,7 @@ const TemplateBuilder = () => {
       setError("");
       setForm(updatedForm);
       setSavedForm(updatedForm);
+      await loadTemplates();
       toast.success("Template saved successfully");
     } catch (err) {
       setError(err.message || "Unable to save template.");
@@ -137,8 +143,18 @@ const TemplateBuilder = () => {
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"></path></svg>
             BRANDING STUDIO
           </p>
-          <h2 className="text-3xl font-bold text-slate-900 tracking-tight mt-1">Template Builder</h2>
-          <p className="text-sm text-slate-500 mt-1">Customize your invoice appearance and default fields.</p>
+          <div className="flex items-center gap-4 mt-2">
+            <h2 className="text-3xl font-bold text-slate-900 tracking-tight">Template Builder:</h2>
+            <input 
+              type="text" 
+              name="name"
+              value={form.name} 
+              onChange={handleChange}
+              className="text-2xl font-bold text-slate-700 bg-transparent border-b-2 border-slate-200 focus:border-indigo-500 focus:outline-none w-64 px-2 py-1"
+              placeholder="Template Name"
+            />
+          </div>
+          <p className="text-sm text-slate-500 mt-2">Customize your invoice appearance and default fields.</p>
         </div>
         <div className="flex flex-wrap gap-3 items-center">
           {templates.length > 0 && (

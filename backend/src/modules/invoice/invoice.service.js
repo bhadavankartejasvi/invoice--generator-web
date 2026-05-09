@@ -90,19 +90,23 @@ export const createInvoice = async (data) => {
     processedItems
   } = calculateTotals(items);
 
-  // 🧾 Create invoice
-  const invoice = await Invoice.create({
-    ...rest,
-    invoice_number: invoiceNumber,
+    let tplConfig = template?.config || null;
+    if (typeof tplConfig === "string") {
+      try { tplConfig = JSON.parse(tplConfig); } catch (e) { tplConfig = {}; }
+    }
 
-    subtotal,
-    tax_amount: taxTotal,
-    discount_amount: discountTotal,
-    total_amount: totalAmount,
+    const invoice = await Invoice.create({
+      ...rest,
+      invoice_number: invoiceNumber,
 
-    custom_fields,
-    template_snapshot: template?.config || null
-  });
+      subtotal,
+      tax_amount: taxTotal,
+      discount_amount: discountTotal,
+      total_amount: totalAmount,
+
+      custom_fields,
+      template_snapshot: tplConfig
+    });
 
   // 📦 Save items
   for (const item of processedItems) {
@@ -131,7 +135,12 @@ export const getInvoices = async (query = {}) => {
     const { Op } = await import("sequelize");
     where[Op.or] = [
       { invoice_number: { [Op.like]: `%${search}%` } },
-      { '$Client.name$': { [Op.like]: `%${search}%` } }
+      { status: { [Op.like]: `%${search}%` } },
+      { notes: { [Op.like]: `%${search}%` } },
+      { terms: { [Op.like]: `%${search}%` } },
+      { '$Client.name$': { [Op.like]: `%${search}%` } },
+      { '$Client.email$': { [Op.like]: `%${search}%` } },
+      { '$Client.company$': { [Op.like]: `%${search}%` } }
     ];
   }
 
@@ -169,8 +178,8 @@ export const updateInvoice = async (id, data) => {
     throw new Error("Invoice not found");
   }
 
-  if (invoice.status === "finalised") {
-    throw new Error("Cannot edit finalised invoice");
+  if (invoice.status === "finalised" || invoice.status === "paid") {
+    throw new Error("Cannot edit finalised or paid invoice");
   }
 
   const { items = [], custom_fields, ...rest } = data;

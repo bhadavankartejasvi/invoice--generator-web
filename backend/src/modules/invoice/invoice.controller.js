@@ -3,11 +3,13 @@ import { successResponse } from "../../utils/apiResponse.js";
 import { generateInvoicePDF } from "./pdf.service.js";
 import { sendInvoiceEmail } from "../notification/email.service.js";
 import { Invoice, InvoiceItem, Client, Template } from "../../models/index.js";
+import { logAction } from "../audit/audit.service.js";
 
 // CREATE
 export const create = async (req, res) => {
   try {
     const data = await service.createInvoice(req.body);
+    await logAction({ user_id: req.user?.id || 1, action: "Created Invoice", entity: "Invoice", entity_id: data.id, details: { invoice_number: data.invoice_number } });
     successResponse(res, data, "Invoice created");
   } catch (err) {
     res.status(400).json({
@@ -47,6 +49,7 @@ export const getById = async (req, res) => {
 export const update = async (req, res) => {
   try {
     const data = await service.updateInvoice(req.params.id, req.body);
+    await logAction({ user_id: req.user?.id || 1, action: "Updated Invoice", entity: "Invoice", entity_id: data.id });
     successResponse(res, data, "Invoice updated");
   } catch (err) {
     res.status(400).json({
@@ -64,6 +67,7 @@ export const updateStatus = async (req, res) => {
       req.body.status,
       req.user?.id
     );
+    await logAction({ user_id: req.user?.id || 1, action: `Status updated to ${req.body.status}`, entity: "Invoice", entity_id: data.id });
     successResponse(res, data, "Status updated");
   } catch (err) {
     res.status(400).json({
@@ -126,6 +130,7 @@ export const sendInvoice = async (req, res) => {
 export const remove = async (req, res) => {
   try {
     await service.deleteInvoice(req.params.id);
+    await logAction({ user_id: req.user?.id || 1, action: "Deleted Invoice", entity: "Invoice", entity_id: req.params.id });
     successResponse(res, null, "Invoice deleted");
   } catch (err) {
     res.status(400).json({

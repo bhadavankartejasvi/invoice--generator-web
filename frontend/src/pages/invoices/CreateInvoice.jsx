@@ -11,7 +11,7 @@ const defaultLineItem = { description: "", quantity: 1, price: 0, tax: 10 };
 const CreateInvoice = () => {
   const [clients, setClients] = useState([]);
   const [templates, setTemplates] = useState([]);
-  const [form, setForm] = useState({
+  const [form, setForm] = useState(() => ({
     clientId: "",
     invoiceNumber: `INV-${new Date().getFullYear()}-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`,
     dueDate: "",
@@ -19,7 +19,7 @@ const CreateInvoice = () => {
     notes: "",
     templateId: "",
     lineItems: [defaultLineItem]
-  });
+  }));
   const [error, setError] = useState("");
   const navigate = useNavigate();
 
@@ -92,7 +92,7 @@ const CreateInvoice = () => {
         invoice_number: form.invoiceNumber,
         due_date: form.dueDate,
         notes: form.notes,
-        status: isDraft ? 'draft' : 'finalised',
+        status: isDraft ? 'draft' : 'pending',
         total_amount: total,
         tax_amount: taxAmount,
         subtotal,

@@ -18,19 +18,20 @@ const Profile = () => {
         fullName: data.fullName || "",
         email: data.email || "",
         company: data.company || "",
-        phone: data.phone || ""
+        phone: data.phone || "",
+        profilePicture: data.profilePicture || ""
       });
       const logsData = await getAuditLogs();
       setLogs(logsData || []);
     } catch {
-      toast.error("Failed to load profile data");
+      toast.error("Failed to load user profile");
     }
   };
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadProfileAndLogs();
-  }, []);
+  }, [fetchProfile, getAuditLogs]);
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -70,14 +71,42 @@ const Profile = () => {
             <form className="p-6 space-y-6" onSubmit={handleSubmit}>
               <div className="flex items-center gap-6 pb-6 border-b border-slate-100">
                 <div className="w-20 h-20 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center overflow-hidden shrink-0">
-                  <span className="text-2xl font-bold text-slate-400">{profile.fullName?.substring(0,2).toUpperCase() || 'US'}</span>
+                  {profile.profilePicture ? (
+                    <img src={profile.profilePicture} alt="Profile" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-2xl font-bold text-slate-400">{profile.fullName?.substring(0,2).toUpperCase() || 'US'}</span>
+                  )}
                 </div>
                 <div>
                   <h4 className="font-bold text-slate-900 text-sm mb-1">Profile Photo</h4>
                   <p className="text-xs text-slate-500 mb-3">Recommended size 400x400px. JPG, GIF or PNG.</p>
                   <div className="flex gap-3">
-                    <button type="button" className="text-xs font-bold bg-white border border-slate-200 text-slate-700 px-3 py-1.5 rounded hover:bg-slate-50 transition-colors">Change</button>
-                    <button type="button" className="text-xs font-bold text-rose-600 hover:text-rose-700 transition-colors">Remove</button>
+                    <label className="cursor-pointer text-xs font-bold bg-white border border-slate-200 text-slate-700 px-3 py-1.5 rounded hover:bg-slate-50 transition-colors">
+                      Change
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        className="hidden" 
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const formData = new FormData();
+                          formData.append("file", file);
+                          try {
+                            const res = await fetch("http://localhost:5000/api/upload", {
+                              method: "POST",
+                              body: formData
+                            });
+                            const data = await res.json();
+                            const url = `http://localhost:5000/uploads/${data.file}`;
+                            setProfile(prev => ({ ...prev, profilePicture: url }));
+                          } catch {
+                            toast.error("Failed to upload image");
+                          }
+                        }} 
+                      />
+                    </label>
+                    <button type="button" onClick={() => setProfile(prev => ({...prev, profilePicture: ""}))} className="text-xs font-bold text-rose-600 hover:text-rose-700 transition-colors">Remove</button>
                   </div>
                 </div>
               </div>

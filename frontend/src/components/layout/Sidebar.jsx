@@ -10,7 +10,7 @@ const navItems = [
   { label: "Settings", path: "/app/profile", icon: "svg-settings" }
 ];
 
-const Sidebar = ({ isOpen, setIsOpen }) => {
+const Sidebar = ({ isOpen }) => {
   const navigate = useNavigate();
 
   const handleLogout = () => {

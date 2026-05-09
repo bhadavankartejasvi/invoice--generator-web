@@ -1,6 +1,21 @@
 import api from "./axiosClient";
 
-export const getTemplates = () => api.get("/templates").then((res) => res.data);
+export const getTemplates = () => api.get("/templates").then((res) => {
+  const data = res.data;
+  if (Array.isArray(data)) {
+    return data.map(t => {
+      if (typeof t.config === 'string') {
+        try {
+          t.config = JSON.parse(t.config);
+        } catch {
+          t.config = {};
+        }
+      }
+      return t;
+    });
+  }
+  return data;
+});
 export const createTemplate = (payload) => api.post("/templates", payload).then((res) => res.data);
 export const uploadTemplateAsset = (formData) =>
   api.post("/upload", formData, {

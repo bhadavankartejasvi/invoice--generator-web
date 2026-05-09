@@ -1,11 +1,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Card from "../../components/ui/Card";
-import Table from "../../components/ui/Table";
-import { getClients } from "../../api/clients";
-import { getProducts } from "../../api/products";
-import { getInvoices } from "../../api/invoices";
+import api from "../../api/axiosClient";
 import { toast } from "react-hot-toast";
+
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -16,40 +14,21 @@ const Dashboard = () => {
     outstanding: 0,
     outstandingCount: 0
   });
-  const [recentInvoices, setRecentInvoices] = useState([]);
 
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [clients, products, invoices] = await Promise.all([getClients(), getProducts(), getInvoices()]);
+        const response = await api.get("/reports/dashboard");
+        const data = response.data;
         
-        let revenue = 0;
-        let pending = 0;
-        let pendingCount = 0;
-
-        invoices.forEach(inv => {
-          const amount = Number(inv.total_amount || inv.total || 0);
-          const status = (inv.status || "").toLowerCase();
-          if (status === 'paid') {
-            revenue += amount;
-          } else if (status === 'pending' || status === 'finalised' || status === 'overdue') {
-            pending += amount;
-            pendingCount++;
-          }
-        });
-
-        const expenses = revenue * 0.3; // Mocking 30% expenses for chart
-        const profit = revenue - expenses;
-
         setStats({
-          totalRevenue: revenue,
-          totalExpenses: expenses,
-          netProfit: profit,
-          outstanding: pending,
-          outstandingCount: pendingCount
+          totalRevenue: data.totalRevenue || 0,
+          totalExpenses: data.totalExpenses || 0,
+          netProfit: data.netProfit || 0,
+          outstanding: data.outstanding || 0,
+          outstandingCount: data.outstandingCount || 0
         });
         
-        setRecentInvoices(invoices.slice(0, 5));
       } catch {
         toast.error("Failed to load dashboard data");
       }
@@ -83,9 +62,6 @@ const Dashboard = () => {
           <p className="text-sm text-slate-500 mt-1">Analyze your enterprise performance and cash flow.</p>
         </div>
         <div className="flex gap-2">
-          <button className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-slate-200 bg-white text-slate-700 font-semibold text-sm transition-colors hover:bg-slate-50 shadow-sm">
-            Jan 1, 2024 - Dec 31, 2024
-          </button>
           <button onClick={() => navigate("/app/invoices/create")} className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-slate-200 bg-white text-slate-700 font-semibold text-sm transition-colors hover:bg-slate-50 shadow-sm">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
             Export
@@ -116,40 +92,7 @@ const Dashboard = () => {
         ))}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <Card className="lg:col-span-2 p-6 flex flex-col min-h-[300px]">
-          <div className="flex justify-between items-center mb-6">
-            <div>
-              <h3 className="font-bold text-slate-900">Revenue vs. Expenses</h3>
-              <p className="text-xs text-slate-500">Monthly trajectory of operational cash flow</p>
-            </div>
-            <div className="flex items-center gap-4 text-xs font-bold">
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-slate-900"></span> Revenue</span>
-              <span className="flex items-center gap-1 text-slate-500"><span className="w-2 h-2 rounded-full bg-slate-300"></span> Expenses</span>
-            </div>
-          </div>
-          {/* Abstract Chart Graphic */}
-          <div className="flex-1 w-full bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-center opacity-60">
-            <span className="text-slate-400 font-medium">Chart Visualization</span>
-          </div>
-        </Card>
 
-        <Card className="p-6 flex flex-col min-h-[300px]">
-          <h3 className="font-bold text-slate-900">Client Distribution</h3>
-          <p className="text-xs text-slate-500 mb-6">Revenue share by industry vertical</p>
-          
-          <div className="flex-1 flex flex-col justify-center items-center">
-            <div className="w-32 h-32 rounded-full border-[12px] border-slate-900 border-r-slate-300 border-b-slate-100 flex items-center justify-center mb-8 shadow-sm">
-               <span className="font-bold text-slate-900">$1.4M</span>
-            </div>
-            <div className="w-full space-y-2 text-xs">
-               <div className="flex justify-between"><span className="font-bold text-slate-700 flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-slate-900"></span> Technology</span><span className="font-medium text-slate-500">45%</span></div>
-               <div className="flex justify-between"><span className="font-bold text-slate-700 flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-slate-300"></span> Manufacturing</span><span className="font-medium text-slate-500">25%</span></div>
-               <div className="flex justify-between"><span className="font-bold text-slate-700 flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-slate-100"></span> Financial Svcs</span><span className="font-medium text-slate-500">30%</span></div>
-            </div>
-          </div>
-        </Card>
-      </div>
     </div>
   );
 };
