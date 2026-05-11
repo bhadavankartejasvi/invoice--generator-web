@@ -1,20 +1,60 @@
 import { Invoice, Client, Product } from "../../models/index.js";
 import fs from "fs";
+import path from "path";
+import { exportToCSV } from "../../utils/csvExporter.js";
 
 export const exportInvoices = async () => {
-  const data = await Invoice.findAll({ raw: true });
+  const invoices = await Invoice.findAll({
+    include: [
+      { model: Client, as: "Client" }
+    ]
+  });
 
-  if (!data.length) throw new Error("No data");
+  if (!invoices.length) throw new Error("No invoices found");
 
-  const keys = Object.keys(data[0]);
+  const uploadsDir = path.resolve("uploads");
+  fs.mkdirSync(uploadsDir, { recursive: true });
+  const filename = "invoices.csv";
+  const filePath = path.join(uploadsDir, filename);
+  const legacyPath = path.resolve(filename);
 
-  const csv = [
-    keys.join(","),
-    ...data.map(row => keys.map(k => row[k]).join(","))
-  ].join("\n");
+  if (legacyPath !== filePath && fs.existsSync(legacyPath)) {
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(legacyPath);
+    } else {
+      fs.renameSync(legacyPath, filePath);
+    }
+  }
 
-  const filePath = "invoices.csv";
-  fs.writeFileSync(filePath, csv);
+  const formatDate = (value) => {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    return date.toISOString().slice(0, 10); // YYYY-MM-DD for best CSV compatibility
+  };
+
+  // Transform data for CSV export
+  const csvData = invoices.map(invoice => {
+    const issueDate = formatDate(invoice.createdAt);
+    const dueDate = formatDate(invoice.due_date) || (issueDate ? formatDate(new Date(new Date(issueDate).getTime() + 30 * 24 * 60 * 60 * 1000)) : "");
+
+    return {
+      "Invoice Number": invoice.invoice_number || invoice.number || "",
+      "Client Name": invoice.Client?.name || "",
+      "Client Email": invoice.Client?.email || "",
+      "Client Company": invoice.Client?.company || "",
+      "Issue Date": issueDate,
+      "Due Date": dueDate,
+      "Status": invoice.status || "Draft",
+      "Subtotal": invoice.subtotal || 0,
+      "Tax Amount": invoice.tax_amount || 0,
+      "Discount Amount": invoice.discount_amount || 0,
+      "Total Amount": invoice.total_amount || 0,
+      "Notes": invoice.notes || ""
+    };
+  });
+
+  exportToCSV(csvData, filePath);
 
   return filePath;
 };

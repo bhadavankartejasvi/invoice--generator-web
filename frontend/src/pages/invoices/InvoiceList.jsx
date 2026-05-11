@@ -4,6 +4,8 @@ import Card from "../../components/ui/Card";
 import Table from "../../components/ui/Table";
 import { getInvoices } from "../../api/invoices";
 import { toast } from "react-hot-toast";
+import { displayCurrency } from "../../utils/currency";
+import { formatDateISO } from "../../utils/date";
 
 const InvoiceList = () => {
   const navigate = useNavigate();
@@ -29,16 +31,27 @@ const InvoiceList = () => {
 
   const exportToCSV = () => {
     if (!invoices || invoices.length === 0) return toast.error("No invoices to export");
-    const headers = ["Invoice Number", "Client Name", "Due Date", "Total", "Status"];
-    const rows = invoices.map(inv => [
-      inv.number || inv.invoice_number || "INV-000",
-      inv.Client?.name || inv.client?.name || inv.clientName || "—",
-      inv.dueDate || inv.createdAt ? new Date(inv.dueDate || inv.createdAt).toLocaleDateString() : "—",
-      (inv.total_amount || inv.total || 0).toFixed(2),
-      inv.status || "Draft"
-    ]);
 
-    let csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n" + rows.map(e => e.join(",")).join("\n");
+    const escapeCsvValue = (value) => {
+      const stringified = value == null ? "" : String(value);
+      return `"${stringified.replace(/"/g, '""')}"`;
+    };
+
+    const headers = ["Invoice Number", "Client Name", "Due Date", "Total", "Status"];
+    const rows = invoices.map(inv => {
+      const totalValue = Number(inv.total_amount ?? inv.total ?? 0);
+      const dateValue = formatDateISO(inv.due_date || inv.createdAt) || "—";
+
+      return [
+        escapeCsvValue(inv.number || inv.invoice_number || "INV-000"),
+        escapeCsvValue(inv.Client?.name || inv.client?.name || inv.clientName || "—"),
+        escapeCsvValue(dateValue),
+        escapeCsvValue(totalValue.toFixed(2)),
+        escapeCsvValue(inv.status || "Draft")
+      ];
+    });
+
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map((row) => row.join(","))].join("\n");
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
@@ -74,9 +87,9 @@ const InvoiceList = () => {
     });
 
     return [
-      { label: "Total Revenue", value: `$${revenue.toLocaleString(undefined, {minimumFractionDigits: 2})}`, badge: "+12.5%", color: "text-emerald-600", bg: "bg-emerald-50", icon: "svg-revenue" },
-      { label: "Outstanding", value: `$${outstanding.toLocaleString(undefined, {minimumFractionDigits: 2})}`, subtext: `${outstandingCount} invoices pending`, icon: "svg-outstanding" },
-      { label: "Overdue", value: `$${overdue.toLocaleString(undefined, {minimumFractionDigits: 2})}`, subtext: `${overdueCount} critical alerts`, text: "text-rose-600", icon: "svg-overdue" },
+      { label: "Total Revenue", value: displayCurrency(revenue), badge: "+12.5%", color: "text-emerald-600", bg: "bg-emerald-50", icon: "svg-revenue" },
+      { label: "Outstanding", value: displayCurrency(outstanding), subtext: `${outstandingCount} invoices pending`, icon: "svg-outstanding" },
+      { label: "Overdue", value: displayCurrency(overdue), subtext: `${overdueCount} critical alerts`, text: "text-rose-600", icon: "svg-overdue" },
       { label: "Drafts", value: drafts.toString(), subtext: "Ready to send", icon: "svg-drafts" }
     ];
   };
@@ -141,7 +154,7 @@ const InvoiceList = () => {
                 placeholder="Search by invoice number or client..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
               />
             </div>
           </div>
@@ -162,7 +175,7 @@ const InvoiceList = () => {
                   <span className="font-semibold text-slate-700">{inv.clientName}</span>
                 </div>
               ) },
-              { key: "dueDate", label: "Date" },
+              { key: "dueDate", label: "Due Date" },
               { key: "total", label: "Amount", render: (inv) => <span className="font-bold text-slate-900">{inv.total}</span> },
               { key: "status", label: "Status", render: (inv) => {
                 const isPaid = inv.status.toLowerCase() === 'paid';
@@ -188,8 +201,8 @@ const InvoiceList = () => {
               id: invoice.id || invoice._id,
               invoiceNumber: invoice.invoice_number || invoice.number || "INV-000",
               clientName: invoice.Client?.name || invoice.client?.name || invoice.clientName || "—",
-              dueDate: invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric'}) : "—",
-              total: invoice.total_amount ? `$${invoice.total_amount.toLocaleString(undefined, {minimumFractionDigits: 2})}` : "—",
+              dueDate: invoice.due_date ? formatDateISO(invoice.due_date) : "—",
+              total: invoice.total_amount ? displayCurrency(invoice.total_amount) : "—",
               status: invoice.status || "Pending"
             }))}
           />

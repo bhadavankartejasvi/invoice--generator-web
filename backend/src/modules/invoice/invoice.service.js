@@ -74,7 +74,16 @@ const calculateTotals = (items) => {
 // 🧾 CREATE INVOICE
 // ======================================================
 export const createInvoice = async (data) => {
-  const { items = [], template_id, custom_fields = [], ...rest } = data;
+  const { items = [], template_id, custom_fields = [], currency = "INR", ...rest } = data;
+
+  if (!Array.isArray(items) || items.length === 0) {
+    throw new Error("Invoice must include at least one product item.");
+  }
+
+  const invalidItem = items.find((item) => !item.product_id || Number(item.quantity) <= 0 || Number(item.price) < 0);
+  if (invalidItem) {
+    throw new Error("All invoice items must include a valid product, quantity, and price.");
+  }
 
   const template = await Template.findByPk(template_id);
 
@@ -98,6 +107,7 @@ export const createInvoice = async (data) => {
     const invoice = await Invoice.create({
       ...rest,
       invoice_number: invoiceNumber,
+      currency,
 
       subtotal,
       tax_amount: taxTotal,
@@ -157,7 +167,7 @@ export const getInvoices = async (query = {}) => {
 // ======================================================
 export const getInvoiceById = async (id) => {
   const invoice = await Invoice.findByPk(id, {
-    include: [InvoiceItem],
+    include: [InvoiceItem, Client],
   });
 
   if (!invoice) {

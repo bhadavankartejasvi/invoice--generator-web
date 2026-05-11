@@ -6,6 +6,7 @@ import Button from "../../components/ui/Button";
 import Table from "../../components/ui/Table";
 import Modal from "../../components/ui/Modal";
 import Input from "../../components/ui/Input";
+import { formatDateISO } from "../../utils/date";
 import { getRecurringInvoices, createRecurringInvoice, deleteRecurringInvoice } from "../../api/recurring";
 
 const RecurringInvoices = () => {
@@ -62,8 +63,8 @@ const RecurringInvoices = () => {
   const columns = useMemo(() => [
     { key: "invoiceId", label: "Source Invoice", render: (s) => s.Invoice?.invoice_number || `ID: ${s.invoiceId}` },
     { key: "frequency", label: "Frequency", render: (s) => <span className="capitalize font-semibold text-indigo-400">{s.frequency}</span> },
-    { key: "startDate", label: "Start Date", render: (s) => new Date(s.startDate).toLocaleDateString() },
-    { key: "endDate", label: "End Date", render: (s) => s.endDate ? new Date(s.endDate).toLocaleDateString() : "Ongoing" },
+    { key: "startDate", label: "Start Date", render: (s) => formatDateISO(s.startDate) },
+    { key: "endDate", label: "End Date", render: (s) => s.endDate ? formatDateISO(s.endDate) : "Ongoing" },
     { key: "status", label: "Status", render: (s) => (
       <span className={`px-2 py-1 rounded text-xs font-semibold ${s.status === 'active' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
         {s.status.toUpperCase()}

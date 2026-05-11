@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import Card from "../../components/ui/Card";
 import api from "../../api/axiosClient";
 import { toast } from "react-hot-toast";
+import { displayCurrency } from "../../utils/currency";
 
 
 const Dashboard = () => {
@@ -38,10 +39,10 @@ const Dashboard = () => {
   }, []);
 
   const cards = [
-    { label: "Total Revenue", value: `$${stats.totalRevenue.toLocaleString(undefined, {minimumFractionDigits: 2})}`, badge: "+12.5%", color: "text-emerald-600", bg: "bg-blue-50", icon: "svg-revenue" },
-    { label: "Total Expenses", value: `$${stats.totalExpenses.toLocaleString(undefined, {minimumFractionDigits: 2})}`, badge: "+4.2%", color: "text-rose-600", bg: "bg-rose-50", icon: "svg-expenses" },
-    { label: "Net Profit", value: `$${stats.netProfit.toLocaleString(undefined, {minimumFractionDigits: 2})}`, badge: "+19.1%", color: "text-emerald-600", bg: "bg-emerald-50", icon: "svg-profit" },
-    { label: "Outstanding", value: `$${stats.outstanding.toLocaleString(undefined, {minimumFractionDigits: 2})}`, subtext: `${stats.outstandingCount} Invoices`, icon: "svg-outstanding" }
+    { label: "Total Revenue", value: displayCurrency(stats.totalRevenue), badge: "+12.5%", color: "text-emerald-600", bg: "bg-blue-50", icon: "svg-revenue" },
+    { label: "Total Expenses", value: displayCurrency(stats.totalExpenses), badge: "+4.2%", color: "text-rose-600", bg: "bg-rose-50", icon: "svg-expenses" },
+    { label: "Net Profit", value: displayCurrency(stats.netProfit), badge: "+19.1%", color: "text-emerald-600", bg: "bg-emerald-50", icon: "svg-profit" },
+    { label: "Outstanding", value: displayCurrency(stats.outstanding), subtext: `${stats.outstandingCount} Invoices`, icon: "svg-outstanding" }
   ];
 
   const renderIcon = (name) => {

@@ -31,7 +31,7 @@ const Profile = () => {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadProfileAndLogs();
-  }, [fetchProfile, getAuditLogs]);
+  }, []);
 
   const handleChange = (event) => {
     const { name, value } = event.target;

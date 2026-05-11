@@ -5,3 +5,4 @@ export const register = (payload) => api.post("/auth/register", payload).then((r
 export const fetchProfile = () => api.get("/auth/profile").then((res) => res.data);
 export const updateProfile = (payload) => api.put("/auth/profile", payload).then((res) => res.data);
 export const forgotPassword = (payload) => api.post("/auth/forgot-password", payload).then((res) => res.data);
+export const resetPassword = (payload) => api.post("/auth/reset-password", payload).then((res) => res.data);

@@ -48,3 +48,12 @@ export const forgotPassword = async (req, res) => {
     res.status(400).json({ message: err.message });
   }
 };
+
+export const resetPassword = async (req, res) => {
+  try {
+    const response = await service.resetPassword(req.body.token, req.body.password);
+    res.json(response);
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+};

@@ -63,7 +63,8 @@ export const forgotPassword = async (email) => {
   if (!user) throw new Error("No account with that email address exists.");
   
   const resetToken = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: "15m" });
-  const resetLink = `http://localhost:5173/reset-password?token=${resetToken}`;
+  const clientUrl = process.env.CLIENT_URL || "http://localhost:5173";
+  const resetLink = `${clientUrl.replace(/\/$/, "")}/reset-password?token=${resetToken}`;
   
   try {
     await transporter.sendMail({
@@ -85,4 +86,22 @@ export const forgotPassword = async (email) => {
   }
   
   return { message: "Password reset instructions have been sent to your email." };
+};
+
+export const resetPassword = async (token, password) => {
+  let payload;
+
+  try {
+    payload = jwt.verify(token, process.env.JWT_SECRET);
+  } catch (err) {
+    throw new Error("Reset token is invalid or has expired.");
+  }
+
+  const user = await User.findByPk(payload.id);
+  if (!user) throw new Error("User account no longer exists.");
+
+  const hashedPassword = await bcrypt.hash(password, 10);
+  await user.update({ password: hashedPassword });
+
+  return { message: "Your password has been reset successfully." };
 };

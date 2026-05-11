@@ -1,19 +1,28 @@
 import Client from "../../models/client.model.js";
 
+const normalizeEmail = (email) => email?.trim().toLowerCase();
+
 // CREATE (with duplicate check)
 export const createClient = async (data) => {
   if (!data.name) throw new Error("Client name is required");
+  if (!data.company) throw new Error("Company is required");
   if (!data.email) throw new Error("Email address is required");
+  if (!data.phone) throw new Error("Phone number is required");
+  if (!/^[0-9+\-\s()]{7,20}$/.test(data.phone)) throw new Error("Phone number is invalid");
 
+  const email = normalizeEmail(data.email);
   const existing = await Client.findOne({
-    where: { email: data.email }
+    where: { email }
   });
 
   if (existing) {
     throw new Error("Client with this email already exists");
   }
 
-  return Client.create(data);
+  return Client.create({
+    ...data,
+    email
+  });
 };
 
 // GET ALL
@@ -44,17 +53,23 @@ export const updateClient = async (id, data) => {
 
   if (!client) throw new Error("Client not found");
   if (data.name !== undefined && !data.name) throw new Error("Client name cannot be empty");
+  if (data.company !== undefined && !data.company) throw new Error("Company cannot be empty");
   if (data.email !== undefined && !data.email) throw new Error("Email address cannot be empty");
+  if (data.phone !== undefined && !data.phone) throw new Error("Phone number cannot be empty");
+  if (data.phone !== undefined && !/^[0-9+\-\s()]{7,20}$/.test(data.phone)) throw new Error("Phone number is invalid");
 
   // prevent duplicate email on update
   if (data.email) {
+    const email = normalizeEmail(data.email);
     const existing = await Client.findOne({
-      where: { email: data.email }
+      where: { email }
     });
 
     if (existing && existing.id !== Number(id)) {
       throw new Error("Email already in use");
     }
+
+    data.email = email;
   }
 
   await client.update(data);

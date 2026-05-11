@@ -1,11 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "react-hot-toast";
+import * as yup from "yup";
 import Card from "../../components/ui/Card";
 import Modal from "../../components/ui/Modal";
 import Input from "../../components/ui/Input";
 import Button from "../../components/ui/Button";
 import Table from "../../components/ui/Table";
 import { getClients, createClient, updateClient, deleteClient } from "../../api/clients";
+import { displayCurrency } from "../../utils/currency";
+
+const clientSchema = yup.object().shape({
+  name: yup.string().min(2, "Name must be at least 2 characters").required("Name is required"),
+  company: yup.string().min(2, "Company must be at least 2 characters").required("Company is required"),
+  email: yup.string().email("Invalid email address").required("Email is required"),
+  phone: yup.string().matches(/^[0-9+\-\s()]{7,20}$/, "Phone must be a valid number").required("Phone is required"),
+  address: yup.string().optional()
+});
 
 const initialClient = { name: "", company: "", email: "", phone: "", address: "" };
 
@@ -16,6 +26,7 @@ const Clients = () => {
   const [openModal, setOpenModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
+  const [error, setError] = useState("");
 
   const [invoices, setInvoices] = useState([]);
 
@@ -48,6 +59,7 @@ const Clients = () => {
   const handleOpen = (client = null) => {
     setSelectedClient(client);
     setFormData(client ? { ...client } : initialClient);
+    setError("");
     setOpenModal(true);
   };
 
@@ -59,7 +71,9 @@ const Clients = () => {
   const handleSubmit = async (event) => {
     event.preventDefault();
     setLoading(true);
+    setError("");
     try {
+      await clientSchema.validate(formData, { abortEarly: false });
       if (selectedClient) {
         await updateClient(selectedClient.id || selectedClient._id, formData);
         toast.success("Client updated successfully");
@@ -70,7 +84,11 @@ const Clients = () => {
       setOpenModal(false);
       loadData(search);
     } catch (err) {
-      toast.error(err.response?.data?.message || err.message || "Unable to save client.");
+      const message = err.name === "ValidationError"
+        ? err.errors[0]
+        : err.response?.data?.message || err.message || "Unable to save client.";
+      setError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -156,7 +174,7 @@ const Clients = () => {
         </Card>
         <Card className="flex flex-col justify-center relative overflow-hidden">
           <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Total Billed</p>
-          <p className="text-3xl font-bold text-slate-900">${totalBilled.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+          <p className="text-3xl font-bold text-slate-900">{displayCurrency(totalBilled)}</p>
           <span className="absolute top-4 right-4 text-[9px] font-bold text-slate-400 uppercase">Across all time</span>
         </Card>
         <Card className="flex flex-col justify-center relative overflow-hidden">
@@ -196,8 +214,8 @@ const Clients = () => {
         onClose={() => setOpenModal(false)}
         footer={
           <div className="flex flex-wrap gap-3">
-            <Button onClick={handleSubmit} disabled={loading}>{selectedClient ? "Update Client" : "Save Client"}</Button>
-            <Button variant="secondary" onClick={() => setOpenModal(false)}>Cancel</Button>
+            <Button type="button" onClick={handleSubmit} disabled={loading}>{selectedClient ? "Update Client" : "Save Client"}</Button>
+            <Button type="button" variant="secondary" onClick={() => setOpenModal(false)}>Cancel</Button>
           </div>
         }
       >
@@ -213,9 +231,10 @@ const Clients = () => {
               value={formData.address}
               onChange={handleChange}
               rows={4}
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-[14px] text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:bg-white focus:border-indigo-500 outline-none transition-all"
+              className="w-full bg-gray-50 border border-slate-200 rounded-lg px-4 py-2.5 text-[14px] text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:bg-white focus:border-indigo-500 outline-none transition-all"
             />
           </div>
+          {error && <p className="text-sm text-rose-500 font-semibold">{error}</p>}
         </form>
       </Modal>
     </div>

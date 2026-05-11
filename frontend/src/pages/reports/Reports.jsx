@@ -25,7 +25,7 @@ const Reports = () => {
     <div className="space-y-6 animate-fade-in-up">
       <div>
         <p className="text-xs font-bold uppercase tracking-[0.2em] text-indigo-400">Analytics & Data</p>
-        <h2 style={theme.typography.h2} className="text-2xl font-bold text-white tracking-tight">
+        <h2 style={theme.typography.h2} className="text-2xl font-bold text-black tracking-tight">
           Reports
         </h2>
       </div>

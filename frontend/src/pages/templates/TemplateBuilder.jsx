@@ -4,6 +4,8 @@ import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import Input from "../../components/ui/Input";
 import { createTemplate, getTemplates, uploadTemplateAsset, updateTemplate, deleteTemplate } from "../../api/templates";
+import { displayCurrency } from "../../utils/currency";
+import { formatDateISO } from "../../utils/date";
 
 const fieldOptions = [
   { key: "invoiceNumber", label: "Invoice Number" },
@@ -14,15 +16,16 @@ const fieldOptions = [
 ];
 
 const defaultForm = {
-  name: "Modern Professional",
+  name: "New Template",
   themeColor: "#4f46e5",
   typography: "Inter",
   borderStyle: "Rounded",
-  businessName: "Acme Corporation",
-  businessAddress: "123 Business Avenue, Suite 100\nSan Francisco, CA 94107",
+  businessName: "Your Company Name",
+  businessAddress: "123 Business Street\nCity, State 12345",
   disabledFields: ["discount"],
   logoUrl: "",
-  signatureUrl: ""
+  signatureUrl: "",
+  notes: "Please include the invoice number in your wire transfer description. Payments are due within 30 days of invoice receipt. Late payments are subject to a 2% monthly interest fee."
 };
 
 const TemplateBuilder = () => {
@@ -45,17 +48,8 @@ const TemplateBuilder = () => {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadTemplates().then(response => {
-      if (response && response.length > 0) {
-        const active = response[0];
-        const config = active.config || {};
-        const loadedForm = {
-          ...defaultForm,
-          ...config,
-          name: active.name || defaultForm.name,
-        };
-        setForm(loadedForm);
-        setSavedForm(loadedForm);
-      }
+      // Don't auto-load the first template - let user choose to load or create new
+      // If user wants to edit existing, they can use the dropdown
     });
   }, []);
 
@@ -157,6 +151,23 @@ const TemplateBuilder = () => {
           <p className="text-sm text-slate-500 mt-2">Customize your invoice appearance and default fields.</p>
         </div>
         <div className="flex flex-wrap gap-3 items-center">
+          <Button 
+            variant="outline" 
+            onClick={() => {
+              const existingNames = templates.map(t => t.name);
+              let counter = 1;
+              let newName = `New Template ${counter}`;
+              while (existingNames.includes(newName)) {
+                counter++;
+                newName = `New Template ${counter}`;
+              }
+              const newForm = { ...defaultForm, name: newName };
+              setForm(newForm);
+              setSavedForm(newForm);
+            }}
+          >
+            New Template
+          </Button>
           {templates.length > 0 && (
             <select 
               className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500"
@@ -234,8 +245,8 @@ const TemplateBuilder = () => {
                     {form.logoUrl ? <img src={form.logoUrl} alt="Logo" className="max-w-full max-h-full p-1" /> : <svg className="w-6 h-6 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>}
                   </div>
                   <div className="flex-1">
-                    <input type="file" accept="image/*" onChange={(event) => uploadAsset(event, "logoUrl")} className="text-xs text-slate-500 file:mr-4 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-slate-900 file:text-white hover:file:bg-slate-800" />
-                    <p className="text-[10px] text-slate-400 mt-2">Recommended: 400x100px transparent PNG</p>
+                    <input type="file" accept="image/png,image/jpeg,image/jpg" onChange={(event) => uploadAsset(event, "logoUrl")} className="text-xs text-slate-500 file:mr-4 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-slate-900 file:text-white hover:file:bg-slate-800" />
+                    <p className="text-[10px] text-slate-400 mt-2">Recommended: 400x100px transparent PNG or JPEG</p>
                   </div>
                 </div>
               </div>
@@ -246,8 +257,8 @@ const TemplateBuilder = () => {
                     {form.signatureUrl ? <img src={form.signatureUrl} alt="Signature" className="max-w-full max-h-full object-contain p-1" /> : <span className="text-[9px] text-slate-300 font-bold uppercase">No Sig</span>}
                   </div>
                   <div className="flex-1">
-                    <input type="file" accept="image/*" onChange={(event) => uploadAsset(event, "signatureUrl")} className="text-xs text-slate-500 file:mr-4 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-slate-900 file:text-white hover:file:bg-slate-800" />
-                    <p className="text-[10px] text-slate-400 mt-2">Recommended: transparent PNG of signature</p>
+                    <input type="file" accept="image/png,image/jpeg,image/jpg" onChange={(event) => uploadAsset(event, "signatureUrl")} className="text-xs text-slate-500 file:mr-4 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-slate-900 file:text-white hover:file:bg-slate-800" />
+                    <p className="text-[10px] text-slate-400 mt-2">Recommended: transparent PNG or JPEG signature</p>
                   </div>
                 </div>
               </div>
@@ -260,6 +271,17 @@ const TemplateBuilder = () => {
                   onChange={handleChange}
                   rows={3}
                   className="w-full bg-white border border-slate-200 rounded-lg px-4 py-2.5 text-[14px] text-slate-900 focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 outline-none transition-all"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2">Default Notes / Terms</label>
+                <textarea
+                  name="notes"
+                  value={form.notes}
+                  onChange={handleChange}
+                  rows={4}
+                  className="w-full bg-white border border-slate-200 rounded-lg px-4 py-2.5 text-[14px] text-slate-900 focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 outline-none transition-all"
+                  placeholder="Enter default terms and notes for this template"
                 />
               </div>
             </div>
@@ -294,7 +316,19 @@ const TemplateBuilder = () => {
           <Card className="p-0 overflow-hidden bg-slate-100 border-slate-200 flex flex-col h-[700px]">
             {/* Live Preview Paper */}
             <div className="flex-1 p-8 overflow-y-auto custom-scrollbar flex justify-center">
-              <div className="bg-white w-full h-max min-h-full shadow-sm border border-slate-200 p-8 flex flex-col">
+              <div 
+                className={`bg-white w-full h-max min-h-full shadow-sm border border-slate-200 p-8 flex flex-col ${
+                  form.borderStyle === 'Rounded' ? 'rounded-lg' : 
+                  form.borderStyle === 'Sharp' ? 'rounded-none' : 
+                  form.borderStyle === 'Soft' ? 'rounded-lg shadow-lg' : 'rounded-lg'
+                }`}
+                style={{ 
+                  fontFamily: form.typography === 'Inter' ? 'Inter, sans-serif' :
+                             form.typography === 'Roboto' ? 'Roboto, sans-serif' :
+                             form.typography === 'Merriweather' ? 'Merriweather, serif' :
+                             form.typography === 'Mono' ? 'monospace' : 'Inter, sans-serif'
+                }}
+              >
                 <div className="flex justify-between items-start mb-10">
                   <div>
                     {form.logoUrl ? (
@@ -322,7 +356,7 @@ const TemplateBuilder = () => {
                   <div className="text-right">
                     <div className="mb-3">
                       <p className="font-bold uppercase text-slate-400 mb-0.5">Date Issued:</p>
-                      <p className="font-bold text-slate-900">{new Date().toLocaleDateString()}</p>
+                      <p className="font-bold text-slate-900">{formatDateISO(new Date())}</p>
                     </div>
                     {!form.disabledFields.includes("dueDate") && (
                       <div>
@@ -348,8 +382,8 @@ const TemplateBuilder = () => {
                       <span className="font-semibold">Sample Service Line Item {i}</span>
                       <div className="flex gap-12 w-48 justify-end">
                         <span>1</span>
-                        <span>$150.00</span>
-                        <span className="font-bold text-slate-900">$150.00</span>
+                        <span>{displayCurrency(150)}</span>
+                        <span className="font-bold text-slate-900">{displayCurrency(150)}</span>
                       </div>
                     </div>
                   ))}
@@ -359,23 +393,23 @@ const TemplateBuilder = () => {
                   <div className="w-48 text-[11px]">
                     <div className="flex justify-between py-1.5 text-slate-500">
                       <span>Subtotal</span>
-                      <span>$300.00</span>
+                      <span>{displayCurrency(300)}</span>
                     </div>
                     {!form.disabledFields.includes("tax") && (
                       <div className="flex justify-between py-1.5 text-slate-500">
                         <span>Tax (10%)</span>
-                        <span>$30.00</span>
+                        <span>{displayCurrency(30)}</span>
                       </div>
                     )}
                     {!form.disabledFields.includes("discount") && (
                       <div className="flex justify-between py-1.5 text-emerald-600">
                         <span>Discount</span>
-                        <span>-$10.00</span>
+                        <span>{displayCurrency(-10)}</span>
                       </div>
                     )}
                     <div className="flex justify-between py-3 mt-1 border-t border-slate-200">
                       <span className="font-bold uppercase tracking-wide text-slate-900">Total</span>
-                      <span className="font-bold text-sm" style={{ color: form.themeColor }}>$320.00</span>
+                      <span className="font-bold text-sm" style={{ color: form.themeColor }}>{displayCurrency(320)}</span>
                     </div>
                   </div>
                 </div>
@@ -383,7 +417,7 @@ const TemplateBuilder = () => {
                 {!form.disabledFields.includes("notes") && (
                   <div className="mt-12 pt-6 border-t border-slate-100 text-[9px] text-slate-500 leading-relaxed">
                     <span className="font-bold text-slate-700 block mb-1">Terms & Conditions</span>
-                    Please make payment within 30 days of receiving this invoice. Late payments are subject to a 1.5% monthly fee.
+                    {form.notes || "Please make payment within due date of receiving this invoice. Late payments are subject to a 1.5% monthly fee."}
                   </div>
                 )}
                 {form.signatureUrl && (

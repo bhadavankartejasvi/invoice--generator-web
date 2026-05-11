@@ -1,21 +1,43 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import * as yup from "yup";
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import { createInvoice } from "../../api/invoices";
+import { formatDateISO } from "../../utils/date";
 import { getClients } from "../../api/clients";
+import { getProducts } from "../../api/products";
 import { getTemplates } from "../../api/templates";
+import toast from "react-hot-toast";
+import { displayCurrency } from "../../utils/currency";
 
-const defaultLineItem = { description: "", quantity: 1, price: 0, tax: 10 };
+const invoiceSchema = yup.object().shape({
+  clientId: yup.string().required("Please select a client"),
+  templateId: yup.string().required("Please select a template"),
+  dueDate: yup.date().optional().min(new Date(new Date().setHours(0, 0, 0, 0)), "Due date must be today or later"),
+  lineItems: yup.array().of(
+    yup.object().shape({
+      product_id: yup.number().required("Please select a product"),
+      description: yup.string().required("Description is required"),
+      quantity: yup.number().positive("Quantity must be positive").required("Quantity is required"),
+      price: yup.number().positive("Price must be positive").required("Price is required"),
+      tax: yup.number().min(0).max(100).required("Tax rate is required"),
+      discount: yup.number().min(0, "Discount must be a positive number").required("Discount is required")
+    })
+  ).min(1, "At least one line item is required")
+});
+
+const defaultLineItem = { product_id: null, description: "", quantity: 1, price: 0, tax: 10, discount: 0 };
 
 const CreateInvoice = () => {
   const [clients, setClients] = useState([]);
   const [templates, setTemplates] = useState([]);
+  const [products, setProducts] = useState([]);
   const [form, setForm] = useState(() => ({
     clientId: "",
     invoiceNumber: `INV-${new Date().getFullYear()}-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`,
     dueDate: "",
-    currency: "USD",
+    currency: "INR",
     notes: "",
     templateId: "",
     lineItems: [defaultLineItem]
@@ -26,12 +48,14 @@ const CreateInvoice = () => {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [clientData, templateData] = await Promise.all([
+        const [clientData, templateData, productData] = await Promise.all([
           getClients(),
-          getTemplates()
+          getTemplates(),
+          getProducts()
         ]);
         setClients(clientData);
         setTemplates(templateData);
+        setProducts(productData);
         if (templateData && templateData.length > 0) {
           setForm(curr => ({ ...curr, templateId: templateData[0].id }));
         }
@@ -57,6 +81,26 @@ const CreateInvoice = () => {
     }));
   };
 
+  const handleProductSelect = (index, productId) => {
+    const product = products.find((product) => String(product.id) === String(productId));
+    setForm((current) => ({
+      ...current,
+      lineItems: current.lineItems.map((item, itemIndex) => {
+        if (itemIndex !== index) return item;
+        if (!product) {
+          return { ...item, product_id: null, description: "", price: 0, tax: 10 };
+        }
+        return {
+          ...item,
+          product_id: product.id,
+          description: product.name,
+          price: Number(product.price || 0),
+          tax: Number(product.tax_rate || item.tax)
+        };
+      })
+    }));
+  };
+
   const addLineItem = () => {
     setForm((current) => ({ ...current, lineItems: [...current.lineItems, { ...defaultLineItem }] }));
   };
@@ -76,45 +120,74 @@ const CreateInvoice = () => {
     () => form.lineItems.reduce((sum, item) => sum + (Number(item.quantity || 0) * Number(item.price || 0) * (Number(item.tax || 0) / 100)), 0),
     [form.lineItems]
   );
-  const total = Number((subtotal + taxAmount).toFixed(2));
+  const discountAmount = useMemo(
+    () => form.lineItems.reduce((sum, item) => sum + Number(item.discount || 0), 0),
+    [form.lineItems]
+  );
+  const total = Number((subtotal + taxAmount - discountAmount).toFixed(2));
+  const currencySymbol = "₹";
 
   const handleSubmit = async (event, isDraft = false) => {
     event?.preventDefault();
-    if (!form.clientId) {
-      setError("Please select a client before saving the invoice.");
-      return;
-    }
+    setError("");
 
     try {
+      await invoiceSchema.validate({
+        clientId: form.clientId,
+        templateId: form.templateId,
+        dueDate: form.dueDate ? new Date(form.dueDate) : undefined,
+        lineItems: form.lineItems
+      }, { abortEarly: false });
+
       await createInvoice({
         client_id: form.clientId,
         template_id: form.templateId,
         invoice_number: form.invoiceNumber,
         due_date: form.dueDate,
+        currency: form.currency,
         notes: form.notes,
         status: isDraft ? 'draft' : 'pending',
         total_amount: total,
         tax_amount: taxAmount,
         subtotal,
         items: form.lineItems.map(item => ({
+          product_id: item.product_id,
           description: item.description,
           quantity: item.quantity,
           price: item.price,
-          tax_rate: item.tax
+          tax_rate: item.tax,
+          discount: item.discount || 0
         }))
       });
+      toast.success(isDraft ? "Draft saved successfully!" : "Invoice created successfully!");
       navigate("/app/invoices");
     } catch (err) {
-      setError(err.message || "Unable to create invoice.");
+      if (err.name === "ValidationError") {
+        setError(err.errors[0]);
+      } else {
+        setError(err.message || "Unable to create invoice.");
+      }
     }
   };
 
-  const selectedClient = clients.find(c => (c.id || c._id) === form.clientId);
+  const selectedClient = clients.find(c => String(c.id || c._id) === String(form.clientId));
   const selectedTemplate = templates.find(t => t.id === form.templateId);
   const tplConfig = selectedTemplate?.config || {};
+  const disabledFields = tplConfig.disabledFields || [];
+  const hasAnyTax = form.lineItems.some(item => Number(item.tax || 0) > 0);
+  const hasAnyDiscount = form.lineItems.some(item => Number(item.discount || 0) > 0);
+  const showInvoiceNumber = !disabledFields.includes("invoiceNumber");
+  const showDueDate = !disabledFields.includes("dueDate");
+  const showTax = !disabledFields.includes("tax") || hasAnyTax;
+  const showDiscount = !disabledFields.includes("discount") || hasAnyDiscount;
+  const showNotes = !disabledFields.includes("notes");
   const themeColor = tplConfig.themeColor || '#1e293b';
-  const fontClass = tplConfig.typography === 'serif' ? 'font-serif' : tplConfig.typography === 'mono' ? 'font-mono' : 'font-sans';
-  const radiusClass = tplConfig.borderStyle === 'square' ? 'rounded-none' : 'rounded';
+  const fontClass = tplConfig.typography === 'Merriweather' ? 'font-serif' : 
+                   tplConfig.typography === 'Mono' ? 'font-mono' : 
+                   'font-sans';
+  const radiusClass = tplConfig.borderStyle === 'Sharp' ? 'rounded-none' : 
+                     tplConfig.borderStyle === 'Soft' ? 'rounded shadow-lg' : 
+                     'rounded';
 
   return (
     <div className="space-y-6 max-w-[1400px] mx-auto animate-fade-in-up pb-12">
@@ -141,7 +214,7 @@ const CreateInvoice = () => {
               <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-4">Client Selection</p>
               <div className="relative mb-6">
                 <select
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 outline-none appearance-none"
+                  className="w-full bg-gray-50 border border-slate-200 rounded-lg px-4 py-3 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 outline-none appearance-none"
                   name="clientId"
                   value={form.clientId}
                   onChange={handleChange}
@@ -157,9 +230,25 @@ const CreateInvoice = () => {
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
                 </span>
               </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2 block">Due Date</label>
+                <div className="relative">
+                  <input
+                    type="date"
+                    name="dueDate"
+                    min={new Date().toISOString().split("T")[0]}
+                    value={form.dueDate}
+                    onChange={handleChange}
+                    className="w-full bg-gray-50 border border-slate-200 rounded-lg px-4 py-3 pr-10 text-sm text-slate-900 focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 outline-none transition-all"
+                  />
+                  <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-slate-400">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3M5 11h14M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                  </span>
+                </div>
+              </div>
               <div className="flex gap-3 text-xs text-blue-600 bg-blue-50 p-3 rounded-lg">
                 <svg className="w-4 h-4 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                <p>Last billed 14 days ago for $4,200.00. Net 30 payment terms applied automatically.</p>
+                <p>Last billed 14 days ago for {displayCurrency(4200)}. Net 30 payment terms applied automatically.</p>
               </div>
             </Card>
             
@@ -180,12 +269,8 @@ const CreateInvoice = () => {
           </div>
 
           <Card className="p-0 overflow-hidden">
-            <div className="p-6 flex justify-between items-end border-b border-slate-100">
+            <div className="p-6 border-b border-slate-100">
               <h3 className="font-bold text-slate-900 text-lg tracking-tight">Invoice Line Items</h3>
-              <button className="text-xs font-bold text-blue-600 flex items-center gap-1 hover:text-blue-800">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                Import from inventory
-              </button>
             </div>
             
             <div className="p-6">
@@ -197,6 +282,7 @@ const CreateInvoice = () => {
                     <th className="pb-3 text-right">Qty</th>
                     <th className="pb-3 text-right">Price</th>
                     <th className="pb-3 text-right">Tax %</th>
+                    <th className="pb-3 text-right">Discount</th>
                     <th className="pb-3 text-right">Total</th>
                     <th className="pb-3 w-8"></th>
                   </tr>
@@ -205,28 +291,42 @@ const CreateInvoice = () => {
                   {form.lineItems.map((item, index) => (
                     <tr key={index}>
                       <td className="py-4 pr-4">
-                        <input
-                          type="text"
-                          className="w-full text-sm font-semibold text-slate-900 border-none outline-none bg-transparent placeholder:text-slate-300 focus:ring-2 focus:ring-slate-100 rounded px-2 py-1 -ml-2"
-                          placeholder="Item name"
-                          value={item.description}
-                          onChange={(e) => updateLineItem(index, "description", e.target.value)}
-                        />
+                        <div className="space-y-2">
+                          <select
+                            className="w-full text-sm text-slate-900 border border-slate-200 bg-gray-50 rounded px-3 py-2 focus:ring-2 focus:ring-slate-200 outline-none transition-all"
+                            value={item.product_id ?? ""}
+                            onChange={(e) => handleProductSelect(index, e.target.value)}
+                          >
+                            <option value="">Select product</option>
+                            {products.map((product) => (
+                              <option key={product.id} value={product.id}>{product.name}</option>
+                            ))}
+                          </select>
+                          <input
+                            type="text"
+                            className="w-full text-sm font-semibold text-slate-900 border border-slate-200 bg-gray-50 placeholder:text-slate-400 focus:ring-2 focus:ring-slate-200 rounded px-3 py-2"
+                            placeholder="Item description"
+                            value={item.description}
+                            readOnly={Boolean(item.product_id)}
+                            onChange={(e) => updateLineItem(index, "description", e.target.value)}
+                          />
+                        </div>
                       </td>
                       <td className="py-4 pr-4 text-right">
                         <input
                           type="number"
-                          className="w-16 text-sm text-slate-600 border-none outline-none bg-transparent text-right focus:ring-2 focus:ring-slate-100 rounded px-2 py-1"
+                          className="w-16 text-sm text-slate-600 border border-slate-200 bg-gray-50 outline-none text-right focus:ring-2 focus:ring-slate-200 rounded px-2 py-2"
                           value={item.quantity}
+                          min="1"
                           onChange={(e) => updateLineItem(index, "quantity", e.target.value)}
                         />
                       </td>
                       <td className="py-4 pr-4 text-right">
                         <div className="relative">
-                          <span className="absolute left-2 top-1.5 text-sm text-slate-400">$</span>
+                          <span className="absolute left-2 top-1.5 text-sm text-slate-400">{currencySymbol}</span>
                           <input
                             type="number"
-                            className="w-24 text-sm text-slate-600 border-none outline-none bg-transparent text-right pl-6 pr-2 py-1 focus:ring-2 focus:ring-slate-100 rounded"
+                            className="w-24 text-sm text-slate-600 border border-slate-200 bg-gray-50 outline-none text-right pl-7 pr-2 py-2 focus:ring-2 focus:ring-slate-200 rounded"
                             value={item.price}
                             onChange={(e) => updateLineItem(index, "price", e.target.value)}
                           />
@@ -235,13 +335,24 @@ const CreateInvoice = () => {
                       <td className="py-4 pr-4 text-right">
                         <input
                           type="number"
-                          className="w-16 text-sm text-slate-600 border-none outline-none bg-transparent text-right focus:ring-2 focus:ring-slate-100 rounded px-2 py-1"
+                          className="w-16 text-sm text-slate-600 border border-slate-200 bg-gray-50 outline-none text-right focus:ring-2 focus:ring-slate-200 rounded px-2 py-2"
                           value={item.tax}
                           onChange={(e) => updateLineItem(index, "tax", e.target.value)}
                         />
                       </td>
+                      <td className="py-4 pr-4 text-right">
+                        <div className="relative">
+                          <span className="absolute left-2 top-1.5 text-sm text-slate-400">{currencySymbol}</span>
+                          <input
+                            type="number"
+                            className="w-20 text-sm text-slate-600 border border-slate-200 bg-gray-50 outline-none text-right pl-7 pr-2 py-2 focus:ring-2 focus:ring-slate-200 rounded"
+                            value={item.discount}
+                            onChange={(e) => updateLineItem(index, "discount", e.target.value)}
+                          />
+                        </div>
+                      </td>
                       <td className="py-4 text-right text-sm font-bold text-slate-900 pr-4">
-                        ${((item.quantity * item.price) * (1 + (item.tax / 100))).toFixed(2)}
+                        {currencySymbol}{((item.quantity * item.price) * (1 + (item.tax / 100)) - Number(item.discount || 0)).toFixed(2)}
                       </td>
                       <td className="py-4 text-right">
                         <button type="button" onClick={() => removeLineItem(index)} disabled={form.lineItems.length === 1} className="text-slate-300 hover:text-rose-500 disabled:opacity-50 transition-colors">
@@ -263,15 +374,19 @@ const CreateInvoice = () => {
                 <div className="w-64 space-y-3">
                   <div className="flex justify-between text-sm">
                     <span className="text-slate-500 font-medium">Subtotal</span>
-                    <span className="text-slate-900 font-bold">${subtotal.toFixed(2)}</span>
+                    <span className="text-slate-900 font-bold">{currencySymbol}{subtotal.toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-slate-500 font-medium">Total Tax</span>
-                    <span className="text-slate-900 font-bold">${taxAmount.toFixed(2)}</span>
+                    <span className="text-slate-900 font-bold">{currencySymbol}{taxAmount.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-500 font-medium">Total Discount</span>
+                    <span className="text-slate-900 font-bold">-{currencySymbol}{discountAmount.toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between text-base pt-3 border-t border-slate-200">
                     <span className="font-bold text-slate-900 uppercase tracking-wide">Grand Total</span>
-                    <span className="font-bold text-slate-900">${total.toFixed(2)}</span>
+                    <span className="font-bold text-slate-900">{currencySymbol}{total.toFixed(2)}</span>
                   </div>
                 </div>
               </div>
@@ -292,51 +407,83 @@ const CreateInvoice = () => {
                     {tplConfig.logoUrl ? (
                       <img src={tplConfig.logoUrl} alt="Logo" className="h-8 object-contain mb-2" />
                     ) : (
-                      <h4 className="font-bold text-[10px] uppercase tracking-wider" style={{ color: themeColor }}>FinPrecision</h4>
+                      <h4 className="font-bold text-[10px] uppercase tracking-wider" style={{ color: themeColor }}>{tplConfig.businessName || "FinPrecision"}</h4>
                     )}
-                    <p className="text-[7px] text-slate-500 leading-tight mt-1">1080 Finance Way, Ste 400<br/>San Francisco, CA 94105<br/>contact@finprecision.io</p>
+                    <p className="text-[7px] text-slate-500 leading-tight mt-1 whitespace-pre-wrap">{tplConfig.businessAddress || "1080 Finance Way, Ste 400\nSan Francisco, CA 94105\ncontact@finprecision.io"}</p>
                   </div>
                   <div className="text-right">
                     <h3 className="font-bold text-xs" style={{ color: themeColor }}>INVOICE</h3>
-                    <p className="text-[7px] text-slate-500">{form.invoiceNumber || "INV-XXXX-XXX"}</p>
+                    {showInvoiceNumber && <p className="text-[7px] text-slate-500">{form.invoiceNumber || "INV-XXXX-XXX"}</p>}
                   </div>
                 </div>
                 
-                <div className="grid grid-cols-2 gap-4 mb-8 text-[7px] leading-tight">
+                <div className={`${showDueDate ? 'grid-cols-3' : 'grid-cols-2'} grid gap-3 mb-6 text-[7px] leading-tight`}>
                   <div>
                     <p className="font-bold uppercase mb-1" style={{ color: themeColor }}>Bill To:</p>
-                    <p className="font-bold text-slate-900">{selectedClient?.company || selectedClient?.name || "Client Name"}</p>
-                    <p className="text-slate-500">{selectedClient?.email || "email@client.com"}</p>
+                    <p className="font-bold text-slate-900 text-[8px]">{selectedClient?.company || selectedClient?.name || "Client Name"}</p>
+                    {selectedClient?.email && <p className="text-slate-500 text-[6px] mt-0.5">{selectedClient.email}</p>}
+                    {selectedClient?.phone && <p className="text-slate-500 text-[6px]">{selectedClient.phone}</p>}
                   </div>
-                  <div className="text-right">
-                    <div className="mb-2">
-                      <p className="font-bold uppercase mb-0.5" style={{ color: themeColor }}>Date Issued:</p>
-                      <p className="font-bold text-slate-900">{new Date().toLocaleDateString()}</p>
-                    </div>
+                  <div>
+                    <p className="font-bold uppercase mb-1" style={{ color: themeColor }}>Date Issued:</p>
+                    <p className="font-bold text-slate-900 text-[8px]">{formatDateISO(new Date())}</p>
+                  </div>
+                  {showDueDate && (
                     <div>
-                      <p className="font-bold uppercase mb-0.5" style={{ color: themeColor }}>Due Date:</p>
-                      <p className="font-bold text-slate-900">{form.dueDate ? new Date(form.dueDate).toLocaleDateString() : "Pending"}</p>
+                      <p className="font-bold uppercase mb-1" style={{ color: themeColor }}>Due Date:</p>
+                      <p className="font-bold text-slate-900 text-[8px]">{form.dueDate ? formatDateISO(form.dueDate) : "Pending"}</p>
                     </div>
-                  </div>
+                  )}
                 </div>
 
-                <div className="flex-1">
-                  <div className="border-b pb-1 mb-2 flex justify-between text-[6px] font-bold uppercase" style={{ borderColor: themeColor, color: themeColor }}>
-                    <span>Description</span>
-                    <span>Total</span>
-                  </div>
-                  {form.lineItems.map((item, i) => (
-                    <div key={i} className="flex justify-between text-[7px] mb-2 text-slate-700">
-                      <span className="font-semibold">{item.description || "—"}</span>
-                      <span className="font-bold">${((item.quantity * item.price) * (1 + (item.tax / 100))).toFixed(2)}</span>
-                    </div>
-                  ))}
+                <div className={`border-b pb-1 mb-2 grid ${showTax && showDiscount ? 'grid-cols-7' : showTax || showDiscount ? 'grid-cols-6' : 'grid-cols-5'} gap-1 text-[5px] font-bold uppercase`} style={{ borderColor: themeColor, color: themeColor }}>
+                  <span className="col-span-2">Description</span>
+                  <span className="text-right">Qty</span>
+                  <span className="text-right">Price</span>
+                  {showTax && <span className="text-right">Tax %</span>}
+                  {showDiscount && <span className="text-right">Discount</span>}
+                  <span className="text-right">Total</span>
                 </div>
+                {form.lineItems.map((item, i) => {
+                  const itemPrice = Number(item.price || 0);
+                  const itemQty = Number(item.quantity || 0);
+                  const itemTax = Number(item.tax || 0);
+                  const itemDiscount = Number(item.discount || 0);
+                  const itemTotal = itemQty * itemPrice * (1 + itemTax / 100) - itemDiscount;
+                  return (
+                    <div key={i} className={`grid ${showTax && showDiscount ? 'grid-cols-7' : showTax || showDiscount ? 'grid-cols-6' : 'grid-cols-5'} gap-1 text-[6px] mb-2 text-slate-700`}>
+                      <span className="col-span-2 font-semibold">{item.description || "—"}</span>
+                      <span className="text-right">{itemQty}</span>
+                      <span className="text-right">{currencySymbol}{itemPrice.toFixed(2)}</span>
+                      {showTax && <span className="text-right">{itemTax}%</span>}
+                      {showDiscount && <span className="text-right">{currencySymbol}{itemDiscount.toFixed(2)}</span>}
+                      <span className="text-right font-bold">{currencySymbol}{itemTotal.toFixed(2)}</span>
+                    </div>
+                  );
+                })}
 
                 <div className="mt-8 flex justify-end border-t border-slate-200 pt-2">
-                  <div className="flex justify-between w-24 text-[8px]">
-                    <span className="font-bold uppercase" style={{ color: themeColor }}>Total</span>
-                    <span className="font-bold text-slate-900">${total.toFixed(2)}</span>
+                  <div className="w-32 text-[7px]">
+                    <div className="flex justify-between mb-1">
+                      <span className="text-slate-500">Subtotal:</span>
+                      <span className="font-semibold">{currencySymbol}{subtotal.toFixed(2)}</span>
+                    </div>
+                    {showTax && (
+                      <div className="flex justify-between mb-1">
+                        <span className="text-slate-500">Tax:</span>
+                        <span className="font-semibold">{currencySymbol}{taxAmount.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {showDiscount && (
+                      <div className="flex justify-between mb-1">
+                        <span className="text-slate-500">Discount:</span>
+                        <span className="font-semibold">-{currencySymbol}{discountAmount.toFixed(2)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between font-bold pt-1 border-t border-slate-300">
+                      <span style={{ color: themeColor }}>Total:</span>
+                      <span style={{ color: themeColor }}>{currencySymbol}{total.toFixed(2)}</span>
+                    </div>
                   </div>
                 </div>
                 
@@ -347,11 +494,21 @@ const CreateInvoice = () => {
                       <p className="text-[5px] text-slate-400 uppercase tracking-wider">Authorized Signature</p>
                     </div>
                   </div>
-                ) : null}
+                ) : (
+                  <div className="mt-4 flex justify-end">
+                    <div className="text-center">
+                      <div className="h-8 mb-1 border-b border-slate-300 pb-1"></div>
+                      <p className="text-[5px] text-slate-400 uppercase tracking-wider">Authorized Signature</p>
+                    </div>
+                  </div>
+                )}
 
-                <div className="mt-8 text-[6px] text-center text-slate-400 leading-tight px-4">
-                  {tplConfig.defaultNotes || "Thank you for your business. Please include invoice number on all correspondence. Payments are accepted via ACH, Wire, or Credit Card."}
-                </div>
+                {showNotes && (
+                  <div className="mt-8 text-[6px] text-center text-slate-400 leading-tight px-4 whitespace-pre-wrap">
+                    <p className="font-bold uppercase mb-1" style={{ color: themeColor }}>Terms & Conditions</p>
+                    {tplConfig.notes || tplConfig.defaultNotes || "Thank you for your business. Please include invoice number on all correspondence. Payments are accepted via ACH, Wire, or Credit Card."}
+                  </div>
+                )}
               </div>
             </div>
             

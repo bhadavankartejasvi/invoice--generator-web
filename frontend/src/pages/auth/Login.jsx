@@ -1,8 +1,14 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "react-hot-toast";
+import * as yup from "yup";
 import AuthLayout from "../../components/auth/AuthLayout";
 import { login } from "../../api/auth";
+
+const loginSchema = yup.object().shape({
+  email: yup.string().email("Invalid email address").required("Email is required"),
+  password: yup.string().required("Password is required")
+});
 
 const Login = () => {
   const [form, setForm] = useState({
@@ -10,6 +16,7 @@ const Login = () => {
     password: ""
   });
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
 
   const handleChange = (e) => {
@@ -20,12 +27,17 @@ const Login = () => {
     e.preventDefault();
     setLoading(true);
     try {
+      await loginSchema.validate(form, { abortEarly: false });
       const response = await login(form);
       localStorage.setItem("token", response.token || response.accessToken || "");
       toast.success("Login successful!");
       navigate("/app/dashboard");
     } catch (err) {
-      toast.error(err.response?.data?.message || err.message || "Invalid credentials.");
+      if (err.name === "ValidationError") {
+        toast.error(err.errors[0]);
+      } else {
+        toast.error(err.response?.data?.message || err.message || "Invalid credentials.");
+      }
     } finally {
       setLoading(false);
     }
@@ -86,15 +98,35 @@ const Login = () => {
               Password
             </label>
 
-            <input
-              type="password"
-              name="password"
-              value={form.password}
-              onChange={handleChange}
-              placeholder="••••••••"
-              className="w-full h-12 px-4 rounded-xl border border-slate-200 bg-white text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 outline-none transition-all"
-              required
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                name="password"
+                value={form.password}
+                onChange={handleChange}
+                placeholder="••••••••"
+                className="w-full h-12 pr-12 px-4 rounded-xl border border-slate-200 bg-white text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 outline-none transition-all"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((prev) => !prev)}
+                className="absolute inset-y-0 right-3 flex items-center text-slate-500 hover:text-slate-900 transition-colors"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20.5C6.5 20.5 2.29 16.73 1 12c.82-2.3 2.25-4.28 4.15-5.66" />
+                    <path d="M1 1l22 22" />
+                  </svg>
+                ) : (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M1 12s4.5-7 11-7 11 7 11 7-4.5 7-11 7-11-7-11-7z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                )}
+              </button>
+            </div>
           </div>
 
           {/* REMEMBER + FORGOT */}

@@ -1,11 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "react-hot-toast";
+import * as yup from "yup";
 import Card from "../../components/ui/Card";
 import Modal from "../../components/ui/Modal";
 import Input from "../../components/ui/Input";
 import Button from "../../components/ui/Button";
 import Table from "../../components/ui/Table";
 import { getProducts, createProduct, updateProduct, deleteProduct } from "../../api/products";
+import { displayCurrency } from "../../utils/currency";
+
+const productSchema = yup.object().shape({
+  name: yup.string().min(2, "Name must be at least 2 characters").required("Name is required"),
+  sku: yup.string().min(1, "SKU is required").required("SKU is required"),
+  price: yup.number().positive("Price must be positive").required("Price is required"),
+  description: yup.string().optional()
+});
 
 const initialProduct = { name: "", sku: "", price: "", description: "" };
 
@@ -16,6 +25,7 @@ const Products = () => {
   const [openModal, setOpenModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
+  const [error, setError] = useState("");
 
   const loadProducts = async (query = "") => {
     try {
@@ -37,6 +47,7 @@ const Products = () => {
   const handleOpen = (product = null) => {
     setSelectedProduct(product);
     setFormData(product ? { ...product } : initialProduct);
+    setError("");
     setOpenModal(true);
   };
 
@@ -48,7 +59,9 @@ const Products = () => {
   const handleSubmit = async (event) => {
     event.preventDefault();
     setLoading(true);
+    setError("");
     try {
+      await productSchema.validate(formData, { abortEarly: false });
       if (selectedProduct) {
         await updateProduct(selectedProduct.id || selectedProduct._id, {
           ...formData,
@@ -65,7 +78,11 @@ const Products = () => {
       setOpenModal(false);
       loadProducts(search);
     } catch (err) {
-      toast.error(err.response?.data?.message || err.message || "Unable to save product.");
+      const message = err.name === "ValidationError"
+        ? err.errors[0]
+        : err.response?.data?.message || err.message || "Unable to save product.";
+      setError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -98,7 +115,7 @@ const Products = () => {
       },
       { key: "sku", label: "SKU", render: (product) => <span className="text-slate-500 font-mono text-xs">{product.sku}</span> },
       { key: "category", label: "Category", render: () => <span className="text-slate-500">Service</span> },
-      { key: "price", label: "Price", render: (product) => <span className="font-bold text-slate-900">${product.price?.toFixed?.(2) || product.price || "0.00"}</span> },
+      { key: "price", label: "Price", render: (product) => <span className="font-bold text-slate-900">{displayCurrency(product.price)}</span> },
       { 
         key: "stock", 
         label: "Stock Level",
@@ -144,7 +161,7 @@ const Products = () => {
         <Card className="flex flex-col justify-center">
           <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Total Inventory Value</p>
           <div className="flex items-end gap-3">
-            <p className="text-3xl font-bold text-slate-900">$1,284,590.00</p>
+            <p className="text-3xl font-bold text-slate-900">{displayCurrency(products.reduce((sum, product) => sum + (Number(product.price) || 0), 0))}</p>
           </div>
           <span className="text-[10px] font-semibold text-emerald-600 mt-2 flex items-center gap-1">
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
@@ -197,8 +214,8 @@ const Products = () => {
         onClose={() => setOpenModal(false)}
         footer={
           <div className="flex flex-wrap gap-3">
-            <Button onClick={handleSubmit} disabled={loading}>{selectedProduct ? "Update Product" : "Save Product"}</Button>
-            <Button variant="secondary" onClick={() => setOpenModal(false)}>Cancel</Button>
+            <Button type="button" onClick={handleSubmit} disabled={loading}>{selectedProduct ? "Update Product" : "Save Product"}</Button>
+            <Button type="button" variant="secondary" onClick={() => setOpenModal(false)}>Cancel</Button>
           </div>
         }
       >
@@ -213,9 +230,10 @@ const Products = () => {
               value={formData.description}
               onChange={handleChange}
               rows={3}
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-[14px] text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:bg-white focus:border-indigo-500 outline-none transition-all"
+              className="w-full bg-gray-50 border border-slate-200 rounded-lg px-4 py-2.5 text-[14px] text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:bg-white focus:border-indigo-500 outline-none transition-all"
             />
           </div>
+          {error && <p className="text-sm text-rose-500 font-semibold">{error}</p>}
         </form>
       </Modal>
     </div>

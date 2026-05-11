@@ -1,5 +1,6 @@
 import PDFDocument from "pdfkit";
 import fs from "fs";
+import path from "path";
 import { Product } from "../../models/index.js";
 
 export const generateInvoicePDF = async (
@@ -10,9 +11,24 @@ export const generateInvoicePDF = async (
 ) => {
   return new Promise(async (resolve, reject) => {
     try {
-      const filePath = `invoice_${invoice.id}.pdf`;
+      const uploadsDir = path.resolve("uploads");
+      fs.mkdirSync(uploadsDir, { recursive: true });
+      const filename = `invoice_${invoice.id}.pdf`;
+      const filePath = path.join(uploadsDir, filename);
+      const legacyPath = path.resolve(filename);
 
-      const doc = new PDFDocument();
+      if (legacyPath !== filePath && fs.existsSync(legacyPath)) {
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(legacyPath);
+        } else {
+          fs.renameSync(legacyPath, filePath);
+        }
+      }
+
+      const doc = new PDFDocument({
+        size: "A4",
+        margins: { top: 40, bottom: 40, left: 40, right: 40 }
+      });
       const stream = fs.createWriteStream(filePath);
       doc.pipe(stream);
 
@@ -44,6 +60,8 @@ export const generateInvoicePDF = async (
   const businessName = config.businessName || "Business Name";
   const businessAddress = config.businessAddress || "";
   const disabledFields = config.disabledFields || [];
+  const hasAnyTax = items.some(item => Number(item.tax_rate || 0) > 0);
+  const hasAnyDiscount = Number(invoice.discount_amount || 0) > 0 || items.some(item => Number(item.discount || 0) > 0);
 
   const getLocalPath = (url) => {
     if (!url) return null;
@@ -92,13 +110,13 @@ export const generateInvoicePDF = async (
   if (client?.phone) doc.text(client.phone, 50, billToY + 42);
 
   doc.fillColor("#94a3b8").font(boldFont).fontSize(9).text("DATE ISSUED:", 350, billToY, { align: "right", width: 200 });
-  doc.fillColor("#0f172a").text(new Date(invoice.createdAt).toLocaleDateString(), 350, billToY + 12, { align: "right", width: 200 });
+  doc.fillColor("#0f172a").text(new Date(invoice.createdAt).toISOString().slice(0, 10), 350, billToY + 12, { align: "right", width: 200 });
 
   if (!disabledFields.includes("dueDate")) {
     const dueDate = invoice.due_date ? new Date(invoice.due_date) : new Date(invoice.createdAt);
     if (!invoice.due_date) dueDate.setDate(dueDate.getDate() + 30);
     doc.fillColor("#94a3b8").text("DUE DATE:", 350, billToY + 35, { align: "right", width: 200 });
-    doc.fillColor("#0f172a").text(dueDate.toLocaleDateString(), 350, billToY + 47, { align: "right", width: 200 });
+    doc.fillColor("#0f172a").text(dueDate.toISOString().slice(0, 10), 350, billToY + 47, { align: "right", width: 200 });
   }
 
   // =============================
@@ -106,14 +124,26 @@ export const generateInvoicePDF = async (
   // =============================
   const tableTop = billToY + 90;
   
+  const showTax = !disabledFields.includes("tax") || hasAnyTax;
+  const showDiscount = !disabledFields.includes("discount") || hasAnyDiscount;
+
   doc.fillColor(accentColor).font(boldFont).fontSize(9);
-  doc.text("Description", 50, tableTop);
-  doc.text("Qty", 280, tableTop, { width: 50, align: "right" });
-  doc.text("Price", 350, tableTop, { width: 70, align: "right" });
-  if (!disabledFields.includes("tax")) {
-    doc.text("Tax", 420, tableTop, { width: 50, align: "right" });
+  let columnX = 50;
+  doc.text("Description", columnX, tableTop);
+  columnX += 220;
+  doc.text("Qty", columnX, tableTop, { width: 40, align: "right" });
+  columnX += 40;
+  doc.text("Price", columnX, tableTop, { width: 55, align: "right" });
+  columnX += 55;
+  if (showTax) {
+    doc.text("Tax", columnX, tableTop, { width: 45, align: "right" });
+    columnX += 45;
   }
-  doc.text("Total", 480, tableTop, { width: 70, align: "right" });
+  if (showDiscount) {
+    doc.text("Discount", columnX, tableTop, { width: 55, align: "right" });
+    columnX += 55;
+  }
+  doc.text("Total", columnX, tableTop, { width: 70, align: "right" });
   
   doc.moveTo(50, tableTop + 15).lineTo(550, tableTop + 15).strokeColor(accentColor).lineWidth(1).stroke();
   
@@ -125,7 +155,8 @@ export const generateInvoicePDF = async (
     const taxRate = Number(item.tax_rate || 0);
     const subtotal = item.quantity * price;
     const tax = (taxRate / 100) * subtotal;
-    const total = subtotal + tax;
+    const discount = Number(item.discount || 0);
+    const total = subtotal + tax - discount;
 
     doc.fillColor("#334155").font(boldFont).fontSize(10);
     doc.text(product?.name || item.description || "—", 50, itemY, { width: 220 });
@@ -134,12 +165,20 @@ export const generateInvoicePDF = async (
     const textHeight = doc.heightOfString(product?.name || item.description || "—", { width: 220 });
     
     doc.font(defaultFont);
-    doc.text(item.quantity.toString(), 280, itemY, { width: 50, align: "right" });
-    doc.text(`$${price.toFixed(2)}`, 350, itemY, { width: 70, align: "right" });
-    if (!disabledFields.includes("tax")) {
-      doc.text(`${taxRate}%`, 420, itemY, { width: 50, align: "right" });
+    let itemX = 280;
+    doc.text(item.quantity.toString(), itemX, itemY, { width: 40, align: "right" });
+    itemX += 40;
+    doc.text(`₹${price.toFixed(2)}`, itemX, itemY, { width: 55, align: "right" });
+    itemX += 55;
+    if (showTax) {
+      doc.text(`${taxRate}%`, itemX, itemY, { width: 45, align: "right" });
+      itemX += 45;
     }
-    doc.font(boldFont).fillColor("#0f172a").text(`$${total.toFixed(2)}`, 480, itemY, { width: 70, align: "right" });
+    if (showDiscount) {
+      doc.text(`-₹${Number(item.discount || 0).toFixed(2)}`, itemX, itemY, { width: 55, align: "right" });
+      itemX += 55;
+    }
+    doc.font(boldFont).fillColor("#0f172a").text(`₹${total.toFixed(2)}`, itemX, itemY, { width: 70, align: "right" });
     
     let itemCustomFields = item.custom_fields;
     if (typeof itemCustomFields === 'string') {
@@ -170,19 +209,19 @@ export const generateInvoicePDF = async (
   
   doc.fillColor("#64748b").font(defaultFont).fontSize(10);
   doc.text("Subtotal", totalsX, doc.y, { width: 80 });
-  doc.text(`$${Number(invoice.subtotal || 0).toFixed(2)}`, totalsX + 80, doc.y, { width: totalsWidth - 80, align: "right" });
+  doc.text(`₹${Number(invoice.subtotal || 0).toFixed(2)}`, totalsX + 80, doc.y, { width: totalsWidth - 80, align: "right" });
   doc.y += 18;
   
-  if (!disabledFields.includes("tax")) {
+  if (showTax) {
     doc.text("Tax", totalsX, doc.y, { width: 80 });
-    doc.text(`$${Number(invoice.tax_amount || 0).toFixed(2)}`, totalsX + 80, doc.y, { width: totalsWidth - 80, align: "right" });
+    doc.text(`₹${Number(invoice.tax_amount || 0).toFixed(2)}`, totalsX + 80, doc.y, { width: totalsWidth - 80, align: "right" });
     doc.y += 18;
   }
   
-  if (!disabledFields.includes("discount") && Number(invoice.discount_amount) > 0) {
+  if (showDiscount && Number(invoice.discount_amount) > 0) {
     doc.fillColor("#059669");
     doc.text("Discount", totalsX, doc.y, { width: 80 });
-    doc.text(`-$${Number(invoice.discount_amount || 0).toFixed(2)}`, totalsX + 80, doc.y, { width: totalsWidth - 80, align: "right" });
+    doc.text(`-₹${Number(invoice.discount_amount || 0).toFixed(2)}`, totalsX + 80, doc.y, { width: totalsWidth - 80, align: "right" });
     doc.y += 18;
   }
 
@@ -193,7 +232,7 @@ export const generateInvoicePDF = async (
   doc.fillColor("#0f172a").font(boldFont).fontSize(12);
   doc.text("TOTAL", totalsX, doc.y, { width: 80 });
   doc.fillColor(accentColor).fontSize(14);
-  doc.text(`$${Number(invoice.total_amount || 0).toFixed(2)}`, totalsX + 80, doc.y - 1, { width: totalsWidth - 80, align: "right" });
+  doc.text(`₹${Number(invoice.total_amount || 0).toFixed(2)}`, totalsX + 80, doc.y - 1, { width: totalsWidth - 80, align: "right" });
 
   // =============================
   // 📝 NOTES & SIGNATURE

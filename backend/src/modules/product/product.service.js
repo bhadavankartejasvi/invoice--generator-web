@@ -1,6 +1,25 @@
 import Product from "../../models/product.model.js";
+import { fn, col, where } from "sequelize";
 
-export const createProduct = (data) => Product.create(data);
+const normalizeProductName = (name) => name?.trim();
+
+export const createProduct = async (data) => {
+  if (!data.name) throw new Error("Product name is required");
+
+  const name = normalizeProductName(data.name);
+  const existing = await Product.findOne({
+    where: where(fn("lower", col("name")), name.toLowerCase())
+  });
+
+  if (existing) {
+    throw new Error("Product with this name already exists");
+  }
+
+  return Product.create({
+    ...data,
+    name
+  });
+};
 export const getProducts = async (query = {}) => {
   const { search } = query;
   const where = {};
@@ -16,8 +35,29 @@ export const getProducts = async (query = {}) => {
   
   return Product.findAll({ where });
 };
-export const updateProduct = (id, data) =>
-  Product.update(data, { where: { id } });
+export const updateProduct = async (id, data) => {
+  const product = await Product.findByPk(id);
+  if (!product) throw new Error("Product not found");
+
+  if (data.name) {
+    const name = normalizeProductName(data.name);
+    const existing = await Product.findOne({
+      where: where(fn("lower", col("name")), name.toLowerCase())
+    });
+
+    if (existing && existing.id !== Number(id)) {
+      throw new Error("Product name already in use");
+    }
+
+    data.name = name;
+  }
+
+  await product.update({
+    ...data,
+    price: data.price !== undefined ? Number(data.price) : product.price
+  });
+  return product;
+};
 
 export const deleteProduct = (id) =>
   Product.destroy({ where: { id } });
